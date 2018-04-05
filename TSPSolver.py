@@ -129,20 +129,30 @@ not counting initial BSSF estimate)</returns> '''
 
         # Rows O(|cities|) if we consider asignemnt and
         # argmin as O(1)
-        for i, index in enumerate(np.argmin(M, axis=1)):
-            val = M[i, index]
+        mins = np.argmin(M, axis=1)
+        for i in range(M.shape[1]):
+            val = M[i, mins[i]]
             if val != np.inf:
                 total_reduction += val
                 M[i, :] -= val
 
-        # Columns same as Rows
-        for i, index in enumerate(np.argmin(M, axis=0)):
-            val = M[index, i]
+        M = M.T
+
+        mins = np.argmin(M, axis=1)
+        for i in range(M.shape[1]):
+            val = M[i, mins[i]]
             if val != np.inf:
                 total_reduction += val
-                M[:, i] -= val
+                M[i, :] -= val
 
-        return M, total_reduction
+        # # Columns same as Rows
+        # for i, index in enumerate(np.argmin(M, axis=0)):
+        #     val = M[index, i]
+        #     if val != np.inf:
+        #         total_reduction += val
+        #         M[:, i] -= val
+
+        return M.T, total_reduction
 
     # O(|cities|)
     def expand_subprobs(self, parent, cities, cost_matrix, costOfRoute):
@@ -152,7 +162,7 @@ not counting initial BSSF estimate)</returns> '''
 
         # O(|cities|)
         for j in range(rcm.shape[1]):
-            if rcm[pindex, j] == np.inf or cost_matrix[pindex, j] + parent.lb > self._bssf.costOfRoute():
+            if rcm[pindex, j] == np.inf or cost_matrix[pindex, j] + parent.lb > costOfRoute:
                 continue
 
             child = State()
@@ -181,7 +191,6 @@ not counting initial BSSF estimate)</returns> '''
             child.city = cities[j]
 
             # O(1) for costTo
-            child.cost = parent.cost + parent.city.costTo(child.city)
             child.path_to = parent.path_to.copy()  # O(|cities|)
             child.path_to.append(parent.city)  # O(1)
 
@@ -204,7 +213,6 @@ not counting initial BSSF estimate)</returns> '''
         return state.lb / len(state.path_to)
         # return state.lb - 200 * len(state.path_to)
 
-    #
     def branchAndBound(self, start_time, time_allowance=60.0):
         # with open('solver', 'wb') as f:
         #     pickle.dump(self, f)
@@ -263,11 +271,13 @@ not counting initial BSSF estimate)</returns> '''
                     if is_solution:
                         # print('solution found', list(map(
                         #     lambda x: x._name, substate.path_to)))
-                        if substate.cost < costOfRoute:  # O(|cities|)
-                            self._bssf = TSPSolution(
-                                substate.path_to)  # O(|cities|)
+                        possible_solution = TSPSolution(substate.path_to)
+                        possible_solution_cost = possible_solution.costOfRoute()
+                        # O(|cities|)
+                        if possible_solution_cost < costOfRoute:
+                            self._bssf = possible_solution  # O(|cities|)
                             count += 1
-                            costOfRoute = self._bssf.costOfRoute()
+                            costOfRoute = possible_solution_cost
 
                     elif substate.lb < costOfRoute:  # O(|cities|)
                         # O(log|states|)
