@@ -22,6 +22,7 @@ class TSPSolver:
         self._time_elapsed = 0
         self._nsubprobs = 0
         self._npruned = 0
+        self._bssf = None
 
     def setupWithScenario(self, scenario):
         self._scenario = scenario
@@ -120,6 +121,12 @@ not counting initial BSSF estimate)</returns> '''
     def reduce_costs(self, M):
         total_reduction = 0
 
+        # # Rows
+        # row_mins = M[np.arange(M.shape[1]), np.argmin(M, axis=1)]
+        # sub_matrix = np.repeat(row_mins, M.shape[1]).reshape(M.shape)
+        # sub_matrix[sub_matrix == np.inf] = 0
+        # M -= sub_matrix
+
         # Rows O(|cities|) if we consider asignemnt and
         # argmin as O(1)
         for i, index in enumerate(np.argmin(M, axis=1)):
@@ -145,7 +152,7 @@ not counting initial BSSF estimate)</returns> '''
 
         # O(|cities|)
         for j in range(rcm.shape[1]):
-            if rcm[pindex, j] == np.inf:
+            if rcm[pindex, j] == np.inf or cost_matrix[pindex, j] + parent.lb > self._bssf.costOfRoute():
                 continue
 
             child = State()
@@ -194,20 +201,20 @@ not counting initial BSSF estimate)</returns> '''
 
     # O(1)
     def get_priority(self, state):
-        # return state.lb - 200 * len(state.path_to)
         return state.lb / len(state.path_to)
+        # return state.lb - 200 * len(state.path_to)
 
     #
     def branchAndBound(self, start_time, time_allowance=60.0):
-        with open('solver', 'wb') as f:
-            pickle.dump(self, f)
+        # with open('solver', 'wb') as f:
+        #     pickle.dump(self, f)
         # sorting is O(|cities|log|cities|)
         cities = sorted(self._scenario.getCities(), key=lambda x: x._index)
         # cost matrix costs O(|cities|^2)
         cost_matrix = self.get_cost_matrix(cities)
         count = 0                                   # Number of times BSSF updated
         # O(|cities|) for greedy
-        bssf = self.greedy(time.time())['soln']
+        self._bssf = self.greedy(time.time())['soln']
 
         self._nsubprobs = 0
         self._npruned = 0
@@ -224,11 +231,15 @@ not counting initial BSSF estimate)</returns> '''
         )  # O(1)
 
         q = [(1, 0, first_state)]
+        max_q = 0
         entry_count = 1
-        costOfRoute = bssf.costOfRoute()
+        costOfRoute = self._bssf.costOfRoute()
         # Worst case loop iterations = O(|states||cities|) if every expansion
         # expanded to substates for all cities
         while len(q) != 0 and time.time() - start_time < time_allowance:
+            if len(q) > max_q:
+                max_q = len(q)
+
             _, _, state = heapq.heappop(q)  # O(log|states|)
             if state.lb > costOfRoute:  # O(|cities|)
                 self._npruned += 1
@@ -236,6 +247,7 @@ not counting initial BSSF estimate)</returns> '''
                 # Worst case, number of substates = O(|cities|)
                 substates = self.expand_subprobs(
                     state, cities, cost_matrix, costOfRoute)
+                self._nsubprobs += len(substates)
                 # Worst case, loop iterations = O(|cities|)
                 for substate in substates:
                     is_solution = False
@@ -252,9 +264,10 @@ not counting initial BSSF estimate)</returns> '''
                         # print('solution found', list(map(
                         #     lambda x: x._name, substate.path_to)))
                         if substate.cost < costOfRoute:  # O(|cities|)
-                            bssf = TSPSolution(substate.path_to)  # O(|cities|)
+                            self._bssf = TSPSolution(
+                                substate.path_to)  # O(|cities|)
                             count += 1
-                            costOfRoute = bssf.costOfRoute()
+                            costOfRoute = self._bssf.costOfRoute()
 
                     elif substate.lb < costOfRoute:  # O(|cities|)
                         # O(log|states|)
@@ -266,12 +279,19 @@ not counting initial BSSF estimate)</returns> '''
                         self._npruned += 1
 
         time_taken = time.time() - start_time
-        print(time_taken)
+        print('time_taken: ', time_taken)
+        print('maximum q size', max_q)
+        print('cost', costOfRoute)
+        print('self._bssf updates', count)
+        print('states pruned', self._npruned)
+        print('total states', self._nsubprobs)
+        print('========')
+
         results = {}
         results['cost'] = costOfRoute  # O(|cities|)
         results['time'] = time_taken
         results['count'] = count
-        results['soln'] = bssf
+        results['soln'] = self._bssf
 
         return results
 
