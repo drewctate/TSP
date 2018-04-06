@@ -46,7 +46,8 @@ not counting initial BSSF estimate)</returns> '''
         count = 0
         while not foundTour:
             # create a random permutation
-            perm = np.random.permutation(ncities)
+            # perm = np.random.permutation(ncities)
+            perm = np.arange(ncities)
 
             # for i in range( ncities ):
             # swap = i
@@ -107,7 +108,7 @@ not counting initial BSSF estimate)</returns> '''
 
             sol = TSPSolution(route)
             if sol.costOfRoute() < bssf.costOfRoute():
-                bssf = TSPSolution(route)  # O(|cities|)
+                bssf = sol  # O(|cities|)
 
         results = {}
         results['cost'] = bssf.costOfRoute()
@@ -159,11 +160,14 @@ not counting initial BSSF estimate)</returns> '''
         substates = []
         pindex = parent.city._index
         rcm = parent.rcm
+        # print(rcm)
 
         # O(|cities|)
         for j in range(rcm.shape[1]):
-            if rcm[pindex, j] == np.inf or cost_matrix[pindex, j] + parent.lb > costOfRoute:
+            if rcm[pindex, j] == np.inf:
                 continue
+
+            self._nsubprobs += 1
 
             child = State()
 
@@ -182,6 +186,7 @@ not counting initial BSSF estimate)</returns> '''
             # Reduce
             # O(|cities|) for self.reduce_costs
             child.rcm, total_reduction = self.reduce_costs(child.rcm)
+            # print(child.rcm)
             child.lb += total_reduction
 
             if child.lb >= costOfRoute:
@@ -214,8 +219,6 @@ not counting initial BSSF estimate)</returns> '''
         # return state.lb - 200 * len(state.path_to)
 
     def branchAndBound(self, start_time, time_allowance=60.0):
-        # with open('solver', 'wb') as f:
-        #     pickle.dump(self, f)
         # sorting is O(|cities|log|cities|)
         cities = sorted(self._scenario.getCities(), key=lambda x: x._index)
         # cost matrix costs O(|cities|^2)
@@ -227,11 +230,12 @@ not counting initial BSSF estimate)</returns> '''
         self._nsubprobs = 0
         self._npruned = 0
         # O(|cities|) for reduce_costs
-        rcm, _ = self.reduce_costs(cost_matrix.copy())
+        # print(cost_matrix)
+        rcm, total_reduction = self.reduce_costs(cost_matrix.copy())
 
         first_state = State(
             rcm,
-            0,
+            total_reduction,
             0,
             None,
             cities[0],
@@ -255,7 +259,6 @@ not counting initial BSSF estimate)</returns> '''
                 # Worst case, number of substates = O(|cities|)
                 substates = self.expand_subprobs(
                     state, cities, cost_matrix, costOfRoute)
-                self._nsubprobs += len(substates)
                 # Worst case, loop iterations = O(|cities|)
                 for substate in substates:
                     is_solution = False
@@ -269,8 +272,6 @@ not counting initial BSSF estimate)</returns> '''
                             continue
 
                     if is_solution:
-                        # print('solution found', list(map(
-                        #     lambda x: x._name, substate.path_to)))
                         possible_solution = TSPSolution(substate.path_to)
                         possible_solution_cost = possible_solution.costOfRoute()
                         # O(|cities|)
@@ -290,11 +291,11 @@ not counting initial BSSF estimate)</returns> '''
 
         time_taken = time.time() - start_time
         print('time_taken: ', time_taken)
-        print('maximum q size', max_q)
         print('cost', costOfRoute)
+        print('maximum q size', max_q)
         print('self._bssf updates', count)
-        print('states pruned', self._npruned)
         print('total states', self._nsubprobs)
+        print('states pruned', self._npruned)
         print('========')
 
         results = {}
